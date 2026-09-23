@@ -1,8 +1,8 @@
 {
   "name": "atelier-natalia-huebra",
-  "version": "4.1.0",
+  "version": "4.2.0",
   "private": true,
-  "description": "Ateliê Natália Huebra — site premium, catálogo, galeria, vídeos e gestão",
+  "description": "Ateliê Natália Huebra — versão 4.2.0, visual champagne, catálogo, galeria, vídeos, agendamento e gestão",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

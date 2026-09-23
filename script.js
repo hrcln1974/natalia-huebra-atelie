@@ -112,8 +112,8 @@ document.addEventListener("DOMContentLoaded", () => {
       applyPublicSettings(data.settings);
       renderCatalog(data.products);
       renderGallery(data.gallery);
-      renderVideos(data.videos);
-      galleryItems = [...document.querySelectorAll(".gallery-item")];
+      renderVideos((data.videos || []).filter((video) => video.type !== "youtube" && !/youtube\.com|youtu\.be/i.test(video.url || "")).slice(0, 3));
+      galleryItems = [...document.querySelectorAll(".gallery-item"), ...document.querySelectorAll(".showcase-image")];
       bindPublicInteractions();
     } catch (error) {
       console.warn("Modo de contingência: conteúdo estático preservado.", error);
