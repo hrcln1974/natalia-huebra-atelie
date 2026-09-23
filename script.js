@@ -71,24 +71,64 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  /* =========================================================
+     INTEGRAÇÃO COM INSTAGRAM / FACEBOOK (embed por link)
+  ========================================================= */
+  function detectEmbedKind(urlValue, explicitType) {
+    const link = String(urlValue || "");
+    const type = String(explicitType || "").toLowerCase();
+    if (type === "instagram" || /instagram\.com\/(p|reel|tv)\//i.test(link)) return "instagram";
+    if (type === "facebook" || /facebook\.com|fb\.watch/i.test(link)) return "facebook";
+    if (type === "youtube" || /youtube\.com|youtu\.be/i.test(link)) return "youtube";
+    return "";
+  }
+
+  function instagramEmbedSrc(urlValue) {
+    const clean = String(urlValue || "").split("?")[0].replace(/\/$/, "");
+    return `${clean}/embed/captioned/`;
+  }
+
+  function facebookEmbedSrc(urlValue, isVideo) {
+    const href = encodeURIComponent(String(urlValue || ""));
+    return isVideo
+      ? `https://www.facebook.com/plugins/video.php?href=${href}&show_text=false&autoplay=true`
+      : `https://www.facebook.com/plugins/post.php?href=${href}`;
+  }
+
   function renderGallery(items) {
     const grid = document.getElementById("galleryGrid");
     if (!grid || !Array.isArray(items) || !items.length) return;
-    grid.innerHTML = items.map((g) => `
+    grid.innerHTML = items.map((g) => {
+      const kind = detectEmbedKind(g.url, g.type);
+      if (kind === "instagram" || kind === "facebook") {
+        const embedSrc = kind === "instagram" ? instagramEmbedSrc(g.url) : facebookEmbedSrc(g.url, false);
+        const label = kind === "instagram" ? "Instagram" : "Facebook";
+        return `
+      <button class="gallery-item" type="button" data-category="${escapeHtml(g.category || "atelie")}" data-embed="${escapeHtml(embedSrc)}" data-caption="${escapeHtml(g.caption || g.title || label)}">
+        <div class="embed-thumb"><span class="embed-badge">${label}</span><span>${escapeHtml(g.title || g.caption || "Ver publicação")}</span></div>
+      </button>`;
+      }
+      return `
       <button class="gallery-item" type="button" data-category="${escapeHtml(g.category || "atelie")}" data-full="${escapeHtml(g.url || "")}" data-caption="${escapeHtml(g.caption || g.title || "Galeria")}">
         <img src="${escapeHtml(g.url || "")}" alt="${escapeHtml(g.caption || g.title || "Imagem do Ateliê")}" loading="lazy">
-      </button>`).join("");
+      </button>`;
+    }).join("");
   }
 
   function renderVideos(items) {
     const grid = document.getElementById("videoGrid");
     if (!grid || !Array.isArray(items) || !items.length) return;
     grid.innerHTML = items.map((v) => {
-      const isYoutube = v.type === "youtube" || /youtube\.com|youtu\.be/i.test(v.url || "");
-      const videoMarkup = isYoutube
+      const kind = detectEmbedKind(v.url, v.type);
+      const isYoutube = kind === "youtube";
+      const isSocial = kind === "instagram" || kind === "facebook";
+      const videoMarkup = (isYoutube || isSocial)
         ? `<div class="video-thumb-placeholder">▶</div>`
         : `<video src="${escapeHtml(v.url || "")}" muted playsinline preload="metadata" aria-hidden="true"></video>`;
-      return `<button class="video-item" type="button" data-video="${isYoutube ? "" : escapeHtml(v.url || "")}" data-youtube="${isYoutube ? escapeHtml((v.url || "").match(/(?:embed\/|v=|youtu\.be\/)([A-Za-z0-9_-]{11})/)?.[1] || "") : ""}" data-caption="${escapeHtml(v.caption || v.title || "Vídeo do Ateliê")}">${videoMarkup}<span class="play-icon" aria-hidden="true">▶</span><span class="video-label">${escapeHtml(v.title || "Vídeo")}</span></button>`;
+      const embedAttr = isSocial
+        ? ` data-embed="${escapeHtml(kind === "instagram" ? instagramEmbedSrc(v.url) : facebookEmbedSrc(v.url, true))}"`
+        : "";
+      return `<button class="video-item" type="button" data-video="${(isYoutube || isSocial) ? "" : escapeHtml(v.url || "")}" data-youtube="${isYoutube ? escapeHtml((v.url || "").match(/(?:embed\/|v=|youtu\.be\/)([A-Za-z0-9_-]{11})/)?.[1] || "") : ""}"${embedAttr} data-caption="${escapeHtml(v.caption || v.title || "Vídeo do Ateliê")}">${videoMarkup}<span class="play-icon" aria-hidden="true">▶</span><span class="video-label">${escapeHtml(v.title || "Vídeo")}</span></button>`;
     }).join("");
   }
 
@@ -301,6 +341,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const lightbox = document.getElementById("lightbox");
   const lightboxImage = document.getElementById("lightboxImage");
+  const lightboxEmbed = document.getElementById("lightboxEmbed");
   const lightboxCaption = document.getElementById("lightboxCaption");
   const lightboxClose = document.getElementById("lightboxClose");
   const lightboxPrev = document.getElementById("lightboxPrev");
@@ -325,16 +366,38 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (!item) return;
 
-    const imageSrc = item.dataset.full;
+    const embedSrc = item.dataset.embed?.trim() || "";
 
-    if (!imageSrc) {
-      console.warn("Imagem ampliada sem data-full.");
-      return;
+    if (embedSrc) {
+      if (lightboxImage) {
+        lightboxImage.removeAttribute("src");
+        lightboxImage.classList.add("is-hidden");
+      }
+      if (lightboxEmbed) {
+        lightboxEmbed.innerHTML = `<iframe src="${escapeHtml(embedSrc)}" loading="lazy" allow="encrypted-media; clipboard-write" title="${escapeHtml(item.dataset.caption || "Publicação")}"></iframe>`;
+        lightboxEmbed.classList.add("active");
+        lightboxEmbed.setAttribute("aria-hidden", "false");
+      }
+    } else {
+      const imageSrc = item.dataset.full;
+
+      if (!imageSrc) {
+        console.warn("Imagem ampliada sem data-full.");
+        return;
+      }
+
+      if (lightboxEmbed) {
+        lightboxEmbed.innerHTML = "";
+        lightboxEmbed.classList.remove("active");
+        lightboxEmbed.setAttribute("aria-hidden", "true");
+      }
+
+      if (lightboxImage) {
+        lightboxImage.classList.remove("is-hidden");
+        lightboxImage.src = imageSrc;
+        lightboxImage.alt = item.dataset.caption || "Imagem ampliada";
+      }
     }
-
-    lightboxImage.src = imageSrc;
-    lightboxImage.alt =
-      item.dataset.caption || "Imagem ampliada";
 
     if (lightboxCaption) {
       lightboxCaption.textContent =
@@ -372,6 +435,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (lightboxImage) {
       lightboxImage.removeAttribute("src");
+      lightboxImage.classList.remove("is-hidden");
+    }
+
+    if (lightboxEmbed) {
+      lightboxEmbed.innerHTML = "";
+      lightboxEmbed.classList.remove("active");
+      lightboxEmbed.setAttribute("aria-hidden", "true");
     }
   }
 
@@ -478,13 +548,22 @@ document.addEventListener("DOMContentLoaded", () => {
   function openVideoModal(item) {
     if (!videoModal || !videoModalFrame) return;
 
+    const embedSrc = item.dataset.embed?.trim() || "";
     const videoId = item.dataset.youtube?.trim() || "";
     const videoSrc = item.dataset.video?.trim() || "";
     const caption = item.dataset.caption || "Vídeo do Ateliê Natália Huebra";
 
     videoModalFrame.replaceChildren();
 
-    if (videoSrc) {
+    if (embedSrc) {
+      const iframe = document.createElement("iframe");
+      iframe.src = embedSrc;
+      iframe.title = caption;
+      iframe.loading = "lazy";
+      iframe.setAttribute("allow", "autoplay; encrypted-media; picture-in-picture; web-share; clipboard-write");
+      iframe.setAttribute("allowfullscreen", "");
+      videoModalFrame.appendChild(iframe);
+    } else if (videoSrc) {
       const video = document.createElement("video");
       video.src = videoSrc;
       video.controls = true;

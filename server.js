@@ -3,6 +3,7 @@ const http=require('http'),fs=require('fs'),path=require('path'),crypto=require(
 const ROOT=__dirname, PORT=Number(process.env.PORT||3000), DATA_DIR=path.join(ROOT,'data'), DB_FILE=process.env.DB_PATH||path.join(DATA_DIR,'db.json'), UPLOAD_DIR=path.join(ROOT,'storage','uploads');
 fs.mkdirSync(DATA_DIR,{recursive:true});fs.mkdirSync(UPLOAD_DIR,{recursive:true});
 function slugify(value){return String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,90)}
+function detectMediaType(u){const s=String(u||'');if(/instagram\.com/i.test(s))return 'instagram';if(/facebook\.com|fb\.watch/i.test(s))return 'facebook';if(/youtube\.com|youtu\.be/i.test(s))return 'youtube';return ''}
 const defaults={business_name:'Ateliê Natália Huebra',phone:'(28) 99983-5920',email:'natytuany@hotmail.com',address:'R. Salomão Fadlalah, 86, Ibatiba - ES, 29395-000',instagram:'https://www.instagram.com/nataliahuebra',facebook:'https://www.facebook.com/share/1Emdx3eSRE/?mibextid=wwXIfr',youtube:'https://www.youtube.com/embed/MqpiMHmU2vI'};
 const seedProducts=[
  {name:'Romance Atemporal',slug:'romance-atemporal',code:'NH-001',category:'Noivas',collection:'Essenciais',size:'Sob medida',color:'Off-white',fabric:'Renda',description:'Silhueta delicada, renda e acabamento sofisticado.',price:'Consulte',status:'disponivel',image:'assets/catalogo-vestido-1.jpg'},
@@ -56,7 +57,7 @@ function next(k){db.seq[k]=(db.seq[k]||0)+1;return db.seq[k]}
 function leadScore(o){let score=0;if(o.phone)score+=30;if(o.email)score+=15;if(o.interest)score+=20;if(o.message&&String(o.message).length>=20)score+=15;if(o.event_date)score+=10;if(o.source==='site')score+=5;if(o.status==='qualificado')score+=5;return Math.min(100,score)}
 function add(k,o){o.id=next(k);o.created_at=new Date().toISOString();db[k].push(o);save();return o}
 function find(k,id){return db[k].find(x=>x.id===Number(id))}
-const securityHeaders={'X-Content-Type-Options':'nosniff','X-Frame-Options':'SAMEORIGIN','Referrer-Policy':'strict-origin-when-cross-origin','Permissions-Policy':'camera=(),microphone=(),geolocation=()','Content-Security-Policy':"default-src 'self'; img-src 'self' data:; media-src 'self'; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com; script-src 'self'; connect-src 'self'; frame-src https://www.youtube.com https://www.youtube-nocookie.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'"};
+const securityHeaders={'X-Content-Type-Options':'nosniff','X-Frame-Options':'SAMEORIGIN','Referrer-Policy':'strict-origin-when-cross-origin','Permissions-Policy':'camera=(),microphone=(),geolocation=()','Content-Security-Policy':"default-src 'self'; img-src 'self' data:; media-src 'self'; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com; script-src 'self'; connect-src 'self'; frame-src https://www.youtube.com https://www.youtube-nocookie.com https://www.instagram.com https://www.facebook.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'"};
 function send(res,status,body,headers={}){const data=Buffer.from(JSON.stringify(body));res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Content-Length':data.length,'Cache-Control':'no-store',...securityHeaders,...headers});res.end(data)}
 function html(res,status,body){const data=Buffer.from(body);res.writeHead(status,{'Content-Type':'text/html; charset=utf-8','Content-Length':data.length,'Cache-Control':'no-store',...securityHeaders});res.end(data)}
 function parseCookies(req){const out={};for(const p of (req.headers.cookie||'').split(';')){const i=p.indexOf('=');if(i>0)out[p.slice(0,i).trim()]=decodeURIComponent(p.slice(i+1).trim())}return out}
@@ -93,7 +94,7 @@ async function readMultipart(req){
  return out;
 }
 function safeFilename(name){return path.basename(String(name||'')).replace(/[^a-zA-Z0-9._-]/g,'-').slice(-120)||'upload.bin'}
-const fields={clients:['name','phone','email','event_type','event_date','instagram','notes','status'],leads:['name','phone','email','interest','message','source','status','score','next_follow_up','notes','tags'],appointments:['client_id','starts_at','kind','notes','status'],products:['name','code','category','collection','size','color','fabric','description','price','promo_price','status','image'],quotes:['client_id','number','total','deposit','balance','valid_until','status','notes'],orders:['client_id','quote_id','number','status','total','notes'],measurements:['client_id','bust','waist','hip','height','shoulder','arm','length','shoe','notes'],payments:['client_id','order_id','description','amount','due_date','paid_at','status'],gallery:['title','category','url','caption','status','order'],videos:['title','category','url','caption','type','status','order']};
+const fields={clients:['name','phone','email','event_type','event_date','instagram','notes','status'],leads:['name','phone','email','interest','message','source','status','score','next_follow_up','notes','tags'],appointments:['client_id','starts_at','kind','notes','status'],products:['name','code','category','collection','size','color','fabric','description','price','promo_price','status','image'],quotes:['client_id','number','total','deposit','balance','valid_until','status','notes'],orders:['client_id','quote_id','number','status','total','notes'],measurements:['client_id','bust','waist','hip','height','shoulder','arm','length','shoe','notes'],payments:['client_id','order_id','description','amount','due_date','paid_at','status'],gallery:['title','category','url','caption','type','status','order'],videos:['title','category','url','caption','type','status','order']};
 function safe(v){if(v===undefined||v===null)return '';return String(v).slice(0,5000)}
 const adminHTML=fs.readFileSync(path.join(ROOT,'public/admin/index.html'),'utf8');
 function productDetailHTML(product){
@@ -189,12 +190,14 @@ async function route(req,res){
   if(req.method==='POST'){
    const b=await readBody(req),o={}; for(const f of fspec)o[f]=safe(b[f]);
    if(!o.url)return send(res,400,{error:'Informe ou envie uma imagem/vídeo antes de salvar'});
+   if(!o.type)o.type=detectMediaType(o.url);
    if(!o.status)o.status='publicado'; if(!o.order)o.order=db[k].length+1;
    const x=add(k,o); log(req,'create',k,x.id); return send(res,201,{id:x.id});
   }
   if(id&&req.method==='PUT'){
    const o=find(k,id); if(!o)return send(res,404,{error:'Registro não encontrado'});
    const b=await readBody(req); for(const f of fspec)if(f in b)o[f]=safe(b[f]);
+   if(!o.type)o.type=detectMediaType(o.url);
    o.updated_at=new Date().toISOString(); save(); log(req,'update',k,Number(id)); return send(res,200,{ok:true});
   }
   if(id&&req.method==='DELETE'){
