@@ -1,8 +1,8 @@
 {
   "name": "atelier-natalia-huebra",
-  "version": "4.2.0",
+  "version": "4.3.0",
   "private": true,
-  "description": "Ateliê Natália Huebra — versão 4.2.0, visual champagne, catálogo, galeria, vídeos, agendamento e gestão",
+  "description": "Ateliê Natália Huebra — V4.3.0, visual champagne, galeria e vídeos com upload, vitrine de promoções, catálogo, agendamento e gestão",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

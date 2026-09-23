@@ -37,6 +37,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function renderCatalog(products) {
+    products = (products || []).filter((p) => p.status !== "promocao");
     const grid = document.getElementById("catalogGrid");
     if (!grid || !Array.isArray(products) || !products.length) return;
     grid.innerHTML = products.map((p) => `
@@ -51,6 +52,23 @@ document.addEventListener("DOMContentLoaded", () => {
           <button class="catalog-buy-btn" type="button" data-nome="${escapeHtml(p.name || "vestido do catálogo")}">Tenho interesse</button>
         </div>
       </article>`).join("");
+  }
+
+  function renderPromotions(products) {
+    const grid = document.getElementById("promotionGrid");
+    if (!grid) return;
+    const promos = (products || []).filter((p) => p.status === "promocao");
+    if (!promos.length) {
+      grid.innerHTML = `<article class="promotion-card"><a class="promotion-image-link" href="/promocoes"><img src="assets/catalogo-vestido-5.jpg" alt="Vitrine de promoções" loading="lazy"><span class="promotion-badge">OFERTA</span></a><div class="promotion-content"><p class="card-kicker">VITRINE</p><h3>Novas oportunidades em breve</h3><p>Fale conosco pelo WhatsApp para saber quais peças estão disponíveis.</p><a class="btn btn-gold" href="/promocoes">Ver vitrine</a></div></article>`;
+      return;
+    }
+    grid.innerHTML = promos.map((p) => {
+      const slug = encodeURIComponent(p.slug || String(p.name||"oferta").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,""));
+      return `<article class="promotion-card"><a class="promotion-image-link" href="/vestidos/${slug}"><img src="${escapeHtml(p.image || "assets/catalogo-vestido-5.jpg")}" alt="${escapeHtml(p.name || "Vestido em promoção")}" loading="lazy"><span class="promotion-badge">PROMOÇÃO</span></a><div class="promotion-content"><p class="card-kicker">${escapeHtml(p.category || "OFERTA")}</p><h3>${escapeHtml(p.name || "Vestido especial")}</h3><p>${escapeHtml(p.description || "Peça selecionada com condição especial.")}</p><div class="promotion-price"><span class="promotion-old">${escapeHtml(p.price || "")}</span><span class="promotion-new">${escapeHtml(p.promo_price || p.price || "Consulte")}</span></div><button class="btn btn-gold promotion-interest" type="button" data-nome="${escapeHtml(p.name || "vestido em promoção")}">Tenho interesse</button></div></article>`;
+    }).join("");
+    grid.querySelectorAll(".promotion-interest").forEach((button) => {
+      button.addEventListener("click", () => openWhatsApp(`Olá! Tenho interesse na promoção do vestido "${button.dataset.nome}" do Ateliê Natália Huebra. Gostaria de saber disponibilidade e condições.`));
+    });
   }
 
   function renderGallery(items) {
@@ -111,6 +129,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const data = await response.json();
       applyPublicSettings(data.settings);
       renderCatalog(data.products);
+      renderPromotions(data.products);
       renderGallery(data.gallery);
       renderVideos((data.videos || []).filter((video) => video.type !== "youtube" && !/youtube\.com|youtu\.be/i.test(video.url || "")).slice(0, 3));
       galleryItems = [...document.querySelectorAll(".gallery-item"), ...document.querySelectorAll(".showcase-image")];

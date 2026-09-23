@@ -1193,3 +1193,19 @@ button {
 .showcase-photos { grid-template-columns: repeat(4, 1fr); }
 @media (max-width: 900px) { .showcase-photos { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 560px) { .showcase-photos { grid-template-columns: repeat(2, 1fr); } .showcase-image, .showcase-image img { min-height: 210px; } }
+
+/* V4.3 — vitrine de promoções */
+.promotion-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px}
+.promotion-card{background:#fffaf3;border:1px solid var(--border);box-shadow:var(--shadow);overflow:hidden}
+.promotion-image-link{display:block;position:relative;aspect-ratio:4/5;overflow:hidden}
+.promotion-image-link img{width:100%;height:100%;object-fit:cover;transition:transform .45s ease}
+.promotion-image-link:hover img{transform:scale(1.035)}
+.promotion-badge{position:absolute;top:16px;left:16px;padding:8px 12px;background:#9a7448;color:#fff;font-size:10px;font-weight:700;letter-spacing:.14em}
+.promotion-content{padding:24px}
+.promotion-content h3{font-family:var(--serif);font-size:32px;font-weight:500;margin:0 0 8px}
+.promotion-price{display:flex;gap:12px;align-items:baseline;flex-wrap:wrap;margin:14px 0 18px}
+.promotion-old{text-decoration:line-through;color:var(--muted)}
+.promotion-new{font-size:25px;font-weight:700;color:var(--gold)}
+.promotion-section{background:#efe2d0}
+@media(max-width:900px){.promotion-grid{grid-template-columns:1fr 1fr}}
+@media(max-width:620px){.promotion-grid{grid-template-columns:1fr}}
