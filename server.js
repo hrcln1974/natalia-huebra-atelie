@@ -1,104 +1,134 @@
-const http=require('http');
-const fs=require('fs');
-const path=require('path');
-const crypto=require('crypto');
-const {URL}=require('url');
-
-const ROOT=__dirname;
-const PORT=Number(process.env.PORT||3000);
-const DATA_DIR=path.join(ROOT,'data');
-const DB_FILE=process.env.DB_PATH||path.join(DATA_DIR,'atelier-v6.json');
-const PUBLIC_DIR=path.join(ROOT,'public');
-const UPLOAD_DIR=path.join(PUBLIC_DIR,'uploads','media');
-const MAX_UPLOAD=Number(process.env.MAX_UPLOAD_BYTES||50*1024*1024);
+'use strict';
+const http=require('http'),fs=require('fs'),path=require('path'),crypto=require('crypto'),url=require('url'),querystring=require('querystring');
+const ROOT=__dirname, PORT=Number(process.env.PORT||3000), DATA_DIR=path.join(ROOT,'data'), DB_FILE=process.env.DB_PATH||path.join(DATA_DIR,'db.json'), UPLOAD_DIR=path.join(ROOT,'storage','uploads');
 fs.mkdirSync(DATA_DIR,{recursive:true});fs.mkdirSync(UPLOAD_DIR,{recursive:true});
+function slugify(value){return String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,90)}
+const defaults={business_name:'Ateliê Natália Huebra',phone:'(28) 99983-5920',email:'natytuany@hotmail.com',address:'R. Salomão Fadlalah, 86, Ibatiba - ES, 29395-000',instagram:'https://www.instagram.com/nataliahuebra',facebook:'https://www.facebook.com/share/1Emdx3eSRE/?mibextid=wwXIfr',youtube:'https://www.youtube.com/embed/MqpiMHmU2vI'};
+const seedProducts=[
+ {name:'Romance Atemporal',slug:'romance-atemporal',code:'NH-001',category:'Noivas',collection:'Essenciais',size:'Sob medida',color:'Off-white',fabric:'Renda',description:'Silhueta delicada, renda e acabamento sofisticado.',price:'Consulte',status:'disponivel',image:'assets/catalogo-vestido-1.jpg'},
+ {name:'Elegância em Movimento',slug:'elegancia-em-movimento',code:'NH-002',category:'Festa',collection:'Celebração',size:'Sob medida',color:'Variado',fabric:'Sob consulta',description:'Modelagem marcante para celebrar com personalidade.',price:'Consulte',status:'disponivel',image:'assets/catalogo-vestido-2.jpg'},
+ {name:'Exclusividade',slug:'exclusividade',code:'NH-003',category:'Sob encomenda',collection:'Personalizados',size:'Sob medida',color:'Personalizado',fabric:'Sob consulta',description:'Uma criação personalizada para o seu estilo e ocasião.',price:'Consulte',status:'disponivel',image:'assets/catalogo-vestido-3.jpg'}
+];
+const seedGallery=[
+ {title:'Detalhes de renda',category:'noivas',url:'assets/noiva-renda.jpg',caption:'Detalhes de renda em vestido de noiva',status:'publicado',order:1},
+ {title:'Criação para noiva',category:'noivas',url:'assets/noiva-2.jpg',caption:'Vestido de noiva',status:'publicado',order:2},
+ {title:'Vestido de festa',category:'festa',url:'assets/modelo-1.jpg',caption:'Modelo usando vestido de festa',status:'publicado',order:3},
+ {title:'Ambiente do Ateliê',category:'atelie',url:'assets/atelie-1.jpg',caption:'Ambiente do Ateliê Natália Huebra',status:'publicado',order:4},
+ {title:'Detalhes do Ateliê',category:'atelie',url:'assets/atelie-2.jpg',caption:'Detalhes do Ateliê Natália Huebra',status:'publicado',order:5}
+];
+const seedVideos=[
+ {title:'Conheça o Ateliê',category:'Institucional',url:'videos/video3.mp4',caption:'Ateliê Natália Huebra',type:'local',status:'publicado',order:1},
+ {title:'Processo de criação',category:'Processo',url:'videos/video1.mp4',caption:'Criação Natália Huebra',type:'local',status:'publicado',order:2},
+ {title:'Coleção',category:'Coleções',url:'videos/video2.mp4',caption:'Coleção Natália Huebra',type:'local',status:'publicado',order:3},
+ {title:'Vídeo do Ateliê no YouTube',category:'Institucional',url:'https://www.youtube.com/embed/MqpiMHmU2vI',caption:'Vídeo do Ateliê Natália Huebra',type:'youtube',status:'publicado',order:4}
+];
+function hashPassword(p,s=crypto.randomBytes(16).toString('hex')){return `${s}:${crypto.scryptSync(p,s,64).toString('hex')}`}
+function verifyPassword(p,h){try{const [s,x]=h.split(':');const y=crypto.scryptSync(p,s,64).toString('hex');return crypto.timingSafeEqual(Buffer.from(x,'hex'),Buffer.from(y,'hex'))}catch{return false}}
+function readDB(){
+ if(!fs.existsSync(DB_FILE)){
+  const db={seq:{users:0,clients:0,leads:0,appointments:0,products:0,quotes:0,orders:0,measurements:0,payments:0,audit_logs:0,gallery:0,videos:0},users:[],clients:[],leads:[],appointments:[],products:seedProducts.map((x,i)=>({...x,id:i+1,created_at:new Date().toISOString()})),quotes:[],orders:[],measurements:[],payments:[],audit_logs:[],gallery:seedGallery.map((x,i)=>({...x,id:i+1,created_at:new Date().toISOString()})),videos:seedVideos.map((x,i)=>({...x,id:i+1,created_at:new Date().toISOString()})),settings:defaults};
+  db.seq.products=seedProducts.length;db.seq.gallery=seedGallery.length;db.seq.videos=seedVideos.length;
+  if(process.env.ADMIN_PASSWORD){const email=process.env.ADMIN_EMAIL||'admin@atelier-nataliahuebra.com';db.users.push({id:1,email,password_hash:hashPassword(process.env.ADMIN_PASSWORD),role:'super_admin',created_at:new Date().toISOString()});db.seq.users=1}
+  fs.writeFileSync(DB_FILE,JSON.stringify(db,null,2));return db
+ }
+ const db=JSON.parse(fs.readFileSync(DB_FILE,'utf8'));
+ if(!db.seq)db.seq={};
+ db.settings={...defaults,...db.settings};
+ for(const k of ['clients','leads','appointments','products','quotes','orders','measurements','payments','audit_logs','gallery','videos'])if(!Array.isArray(db[k]))db[k]=[];
+ db.seq={users:0,clients:0,leads:0,appointments:0,products:0,quotes:0,orders:0,measurements:0,payments:0,audit_logs:0,gallery:0,videos:0,...db.seq};
+ if(!db.products.length){db.products=seedProducts.map((x,i)=>({...x,id:i+1,created_at:new Date().toISOString()}));db.seq.products=seedProducts.length}
+ db.products.forEach(p=>{if(!p.slug)p.slug=slugify(p.name);});
+ if(!db.gallery.length){db.gallery=seedGallery.map((x,i)=>({...x,id:i+1,created_at:new Date().toISOString()}));db.seq.gallery=seedGallery.length}
+ if(!db.videos.length){db.videos=seedVideos.map((x,i)=>({...x,id:i+1,created_at:new Date().toISOString()}));db.seq.videos=seedVideos.length}
+ return db
+}
+let db=readDB();
+if(!db.users.length) console.warn('Nenhum administrador configurado. Defina ADMIN_PASSWORD e execute npm run admin:create.');
+function save(){const tmp=DB_FILE+'.tmp';fs.writeFileSync(tmp,JSON.stringify(db,null,2));fs.renameSync(tmp,DB_FILE)}
+function next(k){db.seq[k]=(db.seq[k]||0)+1;return db.seq[k]}
+function leadScore(o){let score=0;if(o.phone)score+=30;if(o.email)score+=15;if(o.interest)score+=20;if(o.message&&String(o.message).length>=20)score+=15;if(o.event_date)score+=10;if(o.source==='site')score+=5;if(o.status==='qualificado')score+=5;return Math.min(100,score)}
+function add(k,o){o.id=next(k);o.created_at=new Date().toISOString();db[k].push(o);save();return o}
+function find(k,id){return db[k].find(x=>x.id===Number(id))}
+const securityHeaders={'X-Content-Type-Options':'nosniff','X-Frame-Options':'SAMEORIGIN','Referrer-Policy':'strict-origin-when-cross-origin','Permissions-Policy':'camera=(),microphone=(),geolocation=()','Content-Security-Policy':"default-src 'self'; img-src 'self' data:; media-src 'self'; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com; script-src 'self'; connect-src 'self'; frame-src https://www.youtube.com https://www.youtube-nocookie.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'"};
+function send(res,status,body,headers={}){const data=Buffer.from(JSON.stringify(body));res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Content-Length':data.length,'Cache-Control':'no-store',...securityHeaders,...headers});res.end(data)}
+function html(res,status,body){const data=Buffer.from(body);res.writeHead(status,{'Content-Type':'text/html; charset=utf-8','Content-Length':data.length,'Cache-Control':'no-store',...securityHeaders});res.end(data)}
+function parseCookies(req){const out={};for(const p of (req.headers.cookie||'').split(';')){const i=p.indexOf('=');if(i>0)out[p.slice(0,i).trim()]=decodeURIComponent(p.slice(i+1).trim())}return out}
+const sessions=new Map(), attempts=new Map();
+function session(req){const t=parseCookies(req).atelier_session;const s=t&&sessions.get(t);if(!s||s.expires<Date.now()){if(t)sessions.delete(t);return null}return s}
+function requireAuth(req,res){const s=session(req);if(!s){send(res,401,{error:'Não autenticado'});return null}return s}
+function sameOrigin(req){if(['GET','HEAD','OPTIONS'].includes(req.method))return true;const origin=req.headers.origin;if(!origin)return true;return origin===`http://${req.headers.host}`||origin===`https://${req.headers.host}`}
+function readBody(req){return new Promise((resolve,reject)=>{let b='';req.on('data',c=>{b+=c;if(b.length>1e6)req.destroy()});req.on('end',()=>{try{resolve(b?JSON.parse(b):{})}catch{reject(new Error('JSON inválido'))}});req.on('error',reject)})}
+function publicPath(p){let fp=path.normalize(path.join(ROOT,p));if(!fp.startsWith(ROOT))return null;return fp}
+function mime(fp){return ({'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'application/javascript; charset=utf-8','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp','.mp4':'video/mp4','.ico':'image/x-icon','.xml':'application/xml','.txt':'text/plain; charset=utf-8'})[path.extname(fp).toLowerCase()]||'application/octet-stream'}
+function staticFile(req,res,p){const fp=publicPath(p);if(!fp||!fs.existsSync(fp)||fs.statSync(fp).isDirectory())return false;res.writeHead(200,{'Content-Type':mime(fp),...securityHeaders,'X-Content-Type-Options':'nosniff','Cache-Control':p.startsWith('assets/')||p.startsWith('videos/')?'public,max-age=604800':'no-cache'});fs.createReadStream(fp).pipe(res);return true}
+function log(req,action,entity,id){add('audit_logs',{user_id:session(req)?.user?.id||null,action,entity,entity_id:id||null})}
+const fields={clients:['name','phone','email','event_type','event_date','instagram','notes','status'],leads:['name','phone','email','interest','message','source','status','score','next_follow_up','notes','tags'],appointments:['client_id','starts_at','kind','notes','status'],products:['name','code','category','collection','size','color','fabric','description','price','status','image'],quotes:['client_id','number','total','deposit','balance','valid_until','status','notes'],orders:['client_id','quote_id','number','status','total','notes'],measurements:['client_id','bust','waist','hip','height','shoulder','arm','length','shoe','notes'],payments:['client_id','order_id','description','amount','due_date','paid_at','status'],gallery:['title','category','url','caption','status','order'],videos:['title','category','url','caption','type','status','order']};
+function safe(v){if(v===undefined||v===null)return '';return String(v).slice(0,5000)}
+const adminHTML=fs.readFileSync(path.join(ROOT,'public/admin/index.html'),'utf8');
+function productDetailHTML(product){
+ const esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+ const name=esc(product.name||'Criação Natália Huebra');
+ const image=esc(product.image||'assets/catalogo-vestido-1.jpg');
+ const category=esc(product.category||'Coleção');
+ const description=esc(product.description||'Criação sob medida para o seu momento.');
+ const price=esc(product.price||'Consulte disponibilidade e valores');
+ const size=esc(product.size||'Sob medida');
+ const color=esc(product.color||'Personalizado');
+ const fabric=esc(product.fabric||'Sob consulta');
+ const waText=encodeURIComponent('Olá! Tenho interesse no vestido "'+(product.name||'')+'" do Ateliê Natália Huebra. Gostaria de receber disponibilidade e valores.');
+ return '<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="description" content="'+name+' — '+description+' | Ateliê Natália Huebra."><meta property="og:type" content="product"><meta property="og:title" content="'+name+' | Ateliê Natália Huebra"><meta property="og:description" content="'+description+'"><meta property="og:image" content="/'+image.replace(/^\//,'')+'"><meta property="og:locale" content="pt_BR"><link rel="canonical" href="/vestidos/'+esc(product.slug||slugify(product.name))+'"><link rel="icon" href="/icon.png"><link rel="stylesheet" href="/style.css"></head><body class="product-detail-page"><header class="site-header scrolled"><div class="container header-inner"><a class="brand" href="/" aria-label="Ateliê Natália Huebra — início"><span class="brand-mark">NH</span><span class="brand-text"><strong>Natália Huebra</strong><small>ATELIÊ</small></span></a><nav class="nav" style="display:flex" aria-label="Navegação principal"><a href="/">Início</a><a href="/#destaques">Destaques</a><a href="/#galeria">Galeria</a><a href="/#visita">Agendamento</a></nav></div></header><main class="product-detail-hero"><div class="container"><a class="detail-back" href="/#colecoes">← Voltar para coleções</a><div class="product-detail-grid"><div><img class="product-detail-image" src="/'+image+'" alt="'+name+'" loading="eager"></div><div class="product-detail-copy"><p class="kicker">'+category+'</p><h1>'+name+'</h1><p class="lead">'+description+'</p><p class="price">'+price+'</p><div class="detail-meta"><div><strong>Medida</strong><span>'+size+'</span></div><div><strong>Cor</strong><span>'+color+'</span></div><div><strong>Tecido</strong><span>'+fabric+'</span></div></div><div class="hero-actions"><a class="btn btn-gold" target="_blank" rel="noopener noreferrer" href="https://wa.me/5528999835920?text='+waText+'">TENHO INTERESSE</a><a class="btn btn-outline-dark" href="/#visita">AGENDAR ATENDIMENTO</a></div></div></div></div></main></body></html>';
+}
 
-const DEFAULT_DB={
- settings:{atelierName:'Atelier Natália Huebra',tagline:'Noivas • Festa • Alta-Costura • Sob Encomenda',description:'Um atelier de moda para momentos especiais, com curadoria, atendimento próximo e criações sob encomenda.',phone:'(28) 99983-5920',email:'natytuany@hotmail.com',address:'R. Salomão Fadlalah, 86 — Ibatiba-ES, 29395-000',whatsapp_number:'5528999835920',instagram:'https://www.instagram.com/nataliahuebra',facebook:'https://www.facebook.com/share/1Emdx3eSRE/?mibextid=wwXIfr',youtube:'',primary_color:'#b58a55',light_bg:'#f8f5ef',dark_bg:'#211b17',hero_desktop:'/assets/images/banner-natalia-huebra.webp',hero_mobile:'/assets/images/banner-mobile.webp'},
- users:[],categories:[{id:1,name:'Noivas',active:true},{id:2,name:'Festa',active:true},{id:3,name:'Madrinhas',active:true},{id:4,name:'Debutantes',active:true},{id:5,name:'Formandas',active:true}],
- collections:[{id:1,name:'Noivas',active:true},{id:2,name:'Festa',active:true},{id:3,name:'Exclusivos',active:true}],
- dresses:[
-  {id:1,code:'NH-001',name:'Vestido de Noiva Clássico',slug:'vestido-de-noiva-classico',category:'Noivas',collection:'Noivas',mode:'rental',salePrice:0,rentalPrice:1200,size:'38-42',color:'Off-white',fabric:'Renda',status:'published',featured:true,description:'Silhueta elegante com acabamento delicado.',style:'Clássico',length:'Longo',colors:'Off-white',sizes:'38-42',availability:'Disponível para aluguel',alt_text:'Vestido de noiva clássico'},
-  {id:2,code:'NH-002',name:'Vestido Princesa Aurora',slug:'vestido-princesa-aurora',category:'Noivas',collection:'Noivas',mode:'sale',salePrice:8900,rentalPrice:0,size:'40',color:'Off-white',fabric:'Tule e renda',status:'published',featured:true,description:'Modelo princesa com presença marcante.',style:'Princesa',length:'Longo',colors:'Off-white',sizes:'40',availability:'Disponível para venda',alt_text:'Vestido princesa Aurora'},
-  {id:3,code:'NH-003',name:'Vestido Festa Bella',slug:'vestido-festa-bella',category:'Festa',collection:'Festa',mode:'rental',salePrice:0,rentalPrice:850,size:'38-44',color:'Azul',fabric:'Crepe',status:'published',featured:false,description:'Elegância para eventos especiais.',style:'Elegante',length:'Longo',colors:'Azul',sizes:'38-44',availability:'Disponível para aluguel',alt_text:'Vestido de festa Bella'},
-  {id:4,code:'NH-004',name:'Vestido Festa Exclusivo',slug:'vestido-festa-exclusivo',category:'Festa',collection:'Exclusivos',mode:'both',salePrice:4200,rentalPrice:950,size:'40-42',color:'Vinho',fabric:'Zibeline',status:'published',featured:true,description:'Peça exclusiva com acabamento premium.',style:'Exclusivo',length:'Longo',colors:'Vinho',sizes:'40-42',availability:'Venda e aluguel',alt_text:'Vestido festa exclusivo'}
- ],
- media:[],videos:[{id:1,title:'Conheça o Ateliê',description:'Um pouco do universo Natália Huebra.',provider:'local',url:'/assets/videos/690a9253-5940-416f-b3e0-d7b5493af1ee.mp4',status:'published',sort_order:1}],
- clients:[],leads:[],appointments:[],quotes:[],orders:[],measurements:[],payments:[],audit:[]
-};
-
-function clone(x){return JSON.parse(JSON.stringify(x));}
-function load(){if(!fs.existsSync(DB_FILE)){const legacy=path.join(DATA_DIR,'atelier-v5.json');if(fs.existsSync(legacy)){try{const d=normalize(JSON.parse(fs.readFileSync(legacy,'utf8')));save(d);return d}catch{}}const d=clone(DEFAULT_DB);save(d);return d}try{const d=JSON.parse(fs.readFileSync(DB_FILE,'utf8'));return normalize(d)}catch{return clone(DEFAULT_DB)}}
-function normalize(d){const base=clone(DEFAULT_DB);for(const k of Object.keys(base))if(d[k]===undefined)d[k]=base[k];for(const k of ['dresses','clients','leads','appointments','quotes','orders','measurements','payments','media','videos','categories','collections','users','audit'])if(!Array.isArray(d[k]))d[k]=[];return d}
-let db=load();
-function save(d=db){fs.writeFileSync(DB_FILE,JSON.stringify(d,null,2));}
-function next(arr){return arr.length?Math.max(...arr.map(x=>Number(x.id)||0))+1:1}
-function hashPassword(password){const salt=crypto.randomBytes(16);const hash=crypto.scryptSync(String(password),salt,64);return `scrypt:${salt.toString('hex')}:${hash.toString('hex')}`}
-function verifyPassword(password,stored){try{const [,s,h]=String(stored).split(':');const salt=Buffer.from(s,'hex');const expected=crypto.scryptSync(String(password),salt,64);return crypto.timingSafeEqual(expected,Buffer.from(h,'hex'))}catch{return false}}
-function ensureAdmin(){if(db.users.length)return; if(process.env.ADMIN_EMAIL&&process.env.ADMIN_PASSWORD){db.users.push({id:1,email:process.env.ADMIN_EMAIL,passwordHash:hashPassword(process.env.ADMIN_PASSWORD),role:'admin',active:true});save()}}
-ensureAdmin();
-const sessions=new Map();const attempts=new Map();
-function parseCookies(req){const out={};for(const part of String(req.headers.cookie||'').split(';')){const i=part.indexOf('=');if(i>0)out[part.slice(0,i).trim()]=decodeURIComponent(part.slice(i+1).trim())}return out}
-function currentUser(req){const sid=parseCookies(req).atelier_v6_session;if(!sid)return null;const s=sessions.get(sid);if(!s||s.expires<Date.now()){sessions.delete(sid);return null}return db.users.find(u=>u.id===s.userId&&u.active!==false)||null}
-function requireAuth(req,res){const u=currentUser(req);if(!u){json(res,401,{ok:false,error:'Não autenticado'});return null}return u}
-function audit(user,action,entity,id,meta={}){db.audit.unshift({id:next(db.audit),created_at:new Date().toISOString(),user_id:user?.id||null,email:user?.email||'system',action,entity,entity_id:id||null,meta});db.audit=db.audit.slice(0,2000)}
-function json(res,status,obj){const b=JSON.stringify(obj);res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(b)}
-function text(res,status,body,content='text/html; charset=utf-8'){res.writeHead(status,{'Content-Type':content,'Cache-Control':'no-store'});res.end(body)}
-function readBody(req){return new Promise((resolve,reject)=>{let b=[];let n=0;req.on('data',c=>{n+=c.length;if(n>MAX_UPLOAD+2*1024*1024){reject(new Error('Arquivo ou requisição muito grande'));req.destroy();return}b.push(c)});req.on('end',()=>resolve(Buffer.concat(b)));req.on('error',reject)})}
-async function bodyJson(req){const b=await readBody(req);return b.length?JSON.parse(b.toString('utf8')):{}}
-function safeName(name){return path.basename(String(name||'arquivo')).replace(/[^a-zA-Z0-9._-]/g,'-').slice(0,120)}
-function parseMultipart(buf,contentType){const m=String(contentType).match(/boundary=(?:"([^"]+)"|([^;]+))/i);if(!m)throw new Error('Multipart inválido');const boundary=Buffer.from('--'+(m[1]||m[2]));const parts=[];let pos=0;while((pos=buf.indexOf(boundary,pos))!==-1){pos+=boundary.length;if(buf[pos]===45&&buf[pos+1]===45)break;if(buf[pos]===13&&buf[pos+1]===10)pos+=2;const next=buf.indexOf(boundary,pos);if(next<0)break;let part=buf.slice(pos,next);if(part.slice(-2).toString()==='\r\n')part=part.slice(0,-2);const sep=part.indexOf('\r\n\r\n');if(sep<0)continue;const hs=part.slice(0,sep).toString();const content=part.slice(sep+4);const name=(hs.match(/name="([^"]+)"/i)||[])[1];const filename=(hs.match(/filename="([^"]*)"/i)||[])[1];const type=(hs.match(/Content-Type:\s*([^\r\n]+)/i)||[])[1]||'text/plain';if(name)parts.push({name,filename,type,data:content});pos=next}return parts}
-function publicDresses(query){let rows=db.dresses.filter(d=>d.status==='published');if(query.get('category'))rows=rows.filter(d=>String(d.category).toLowerCase()===query.get('category').toLowerCase());if(query.get('mode')){const m=query.get('mode');rows=rows.filter(d=>d.mode===m||d.mode==='both')}return rows.map(enrichDress)}
-function enrichDress(d){const media=db.media.filter(m=>m.dress_id===d.id&&m.status!=='hidden').sort((a,b)=>(a.sort_order||0)-(b.sort_order||0));const vids=db.videos.filter(v=>v.dress_id===d.id&&v.status==='published').sort((a,b)=>(a.sort_order||0)-(b.sort_order||0));return {...d,media,videos:vids,photo:media.find(m=>m.is_primary)?.url||media[0]?.url||''}}
-function dashboard(){const today=new Date().toISOString().slice(0,10);return {clients:db.clients.length,leads:db.leads.length,appointments:db.appointments.filter(a=>String(a.starts_at||'').slice(0,10)===today).length,products:db.dresses.length,gallery:db.media.length,videos:db.videos.length,orders:db.orders.length,pending:db.payments.filter(p=>p.status!=='paid').reduce((s,p)=>s+Number(p.amount||0),0),sale:db.dresses.filter(d=>d.mode==='sale'||d.mode==='both').length,rental:db.dresses.filter(d=>d.mode==='rental'||d.mode==='both').length}}
-function isWrite(req){return ['POST','PUT','PATCH','DELETE'].includes(req.method)}
-function originOK(req){const origin=req.headers.origin;if(!origin)return true;try{const u=new URL(origin);return u.host===req.headers.host}catch{return false}}
-function serveFile(res,file){if(!fs.existsSync(file)||!fs.statSync(file).isFile())return false;const ext=path.extname(file).toLowerCase();const mime={'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'application/javascript; charset=utf-8','.json':'application/json','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp','.svg':'image/svg+xml','.mp4':'video/mp4','.webm':'video/webm','.mov':'video/quicktime','.txt':'text/plain'}[ext]||'application/octet-stream';res.writeHead(200,{'Content-Type':mime,'Cache-Control':ext==='.html'?'no-cache':'public, max-age=31536000, immutable'});fs.createReadStream(file).pipe(res);return true}
+function simplePage({title,description,canonicalPath,heading,bodyHtml,ctaHtml=''}) {
+ const esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+ const canonical = (canonicalPath || '/');
+ return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="${esc(description)}"><meta property="og:type" content="website"><meta property="og:title" content="${esc(title)}"><meta property="og:description" content="${esc(description)}"><meta property="og:image" content="/assets/og-atelie.jpg"><meta property="og:locale" content="pt_BR">
+<link rel="canonical" href="${esc(canonical)}"><link rel="icon" href="/icon.png"><title>${esc(title)}</title><link rel="stylesheet" href="/style.css"></head>
+<body class="simple-page"><header class="site-header scrolled"><div class="container header-inner"><a class="brand" href="/" aria-label="Ateliê Natália Huebra — início"><span class="brand-mark">NH</span><span class="brand-text"><strong>Natália Huebra</strong><small>ATELIÊ</small></span></a><a class="nav-cta" href="/#visita">Agendar atendimento</a></div></header>
+<main class="simple-page-main"><div class="narrow"><p class="eyebrow">ATELIÊ NATÁLIA HUEBRA</p><h1>${esc(heading)}</h1>${bodyHtml}${ctaHtml}</div></main><footer class="simple-page-footer"><a href="/">Voltar ao início</a></footer></body></html>`;
+}
+function notFoundHTML(){
+ return simplePage({title:'Página não encontrada | Ateliê Natália Huebra',description:'A página solicitada não foi encontrada. Volte ao Ateliê Natália Huebra para continuar navegando.',canonicalPath:'/404',heading:'Página não encontrada',bodyHtml:'<p>O endereço que você acessou não existe ou foi movido. Você pode voltar ao início e continuar conhecendo nossas criações.</p>',ctaHtml:'<p><a class="btn btn-gold" href="/">Voltar ao início</a></p>'});
+}
+function privacyHTML(){
+ return simplePage({title:'Política de Privacidade | Ateliê Natália Huebra',description:'Política de Privacidade do Ateliê Natália Huebra e informações sobre o tratamento de dados enviados pelo site.',canonicalPath:'/politica-de-privacidade',heading:'Política de Privacidade',bodyHtml:`<div class="legal-content">
+<h2>1. Dados enviados pelo site</h2><p>Ao solicitar atendimento, você pode informar nome, telefone/WhatsApp, e-mail, interesse e mensagem. Esses dados são utilizados para responder ao contato e organizar o atendimento solicitado.</p>
+<h2>2. Dados de leads</h2><p>Quando o formulário é enviado, os dados podem ser registrados no painel administrativo do Ateliê para acompanhamento do atendimento. O acesso é restrito à administração autorizada.</p>
+<h2>3. WhatsApp</h2><p>O site pode abrir o WhatsApp para continuidade da conversa. O tratamento realizado pelo WhatsApp segue as políticas e condições da própria plataforma.</p>
+<h2>4. Cookies e tecnologias de terceiros</h2><p>O site não utiliza cookies de publicidade por padrão. Serviços externos, quando habilitados, podem aplicar suas próprias tecnologias e políticas.</p>
+<h2>5. Segurança e direitos</h2><p>São adotadas medidas técnicas compatíveis com a estrutura do site para proteger os dados. Para solicitar informação, correção ou exclusão de dados enviados pelo site, entre em contato pelo WhatsApp ou pelo e-mail <a href="mailto:natytuany@hotmail.com">natytuany@hotmail.com</a>.</p>
+<h2>6. Atualizações</h2><p>Esta política pode ser atualizada para refletir mudanças no site ou na forma de atendimento.</p></div>`});
+}
+function thankYouHTML(){
+ return simplePage({title:'Obrigado pelo contato | Ateliê Natália Huebra',description:'Agradecimento pelo contato com o Ateliê Natália Huebra.',canonicalPath:'/obrigado',heading:'Obrigada pelo seu contato!',bodyHtml:'<p>Seu pedido de atendimento foi recebido. Em seguida, o WhatsApp poderá ser aberto para você continuar a conversa com o Ateliê.</p><p>Enquanto isso, você pode conhecer nossas coleções e criações.</p>',ctaHtml:'<p><a class="btn btn-gold" href="/#colecoes">Ver coleções</a> <a class="btn btn-outline-dark" href="/">Voltar ao início</a></p>'});
+}
 
 async function route(req,res){
- const u=new URL(req.url,`http://${req.headers.host||'localhost'}`);const p=u.pathname;
- if(p==='/health')return json(res,200,{ok:true,service:'atelier-natalia-huebra',version:'6.0.0',database:fs.existsSync(DB_FILE),storage:fs.existsSync(UPLOAD_DIR)});
- if(p==='/')return serveFile(res,path.join(PUBLIC_DIR,'index.html'))?undefined:json(res,404,{error:'Site indisponível'});
- if(p==='/admin')return serveFile(res,path.join(PUBLIC_DIR,'admin','index.html'))?undefined:json(res,404,{error:'Painel indisponível'});
- if(p==='/api/settings'&&req.method==='GET')return json(res,200,db.settings);
- if(p==='/api/categories'&&req.method==='GET')return json(res,200,db.categories.filter(x=>x.active));
- if(p==='/api/dresses'&&req.method==='GET')return json(res,200,publicDresses(u.searchParams));
- if(p.startsWith('/api/dresses/')&&req.method==='GET'){const slug=decodeURIComponent(p.slice('/api/dresses/'.length));const d=db.dresses.find(x=>x.slug===slug&&x.status==='published');return d?json(res,200,enrichDress(d)):json(res,404,{error:'Vestido não encontrado'})}
- if(p==='/api/videos'&&req.method==='GET')return json(res,200,db.videos.filter(v=>v.status==='published').sort((a,b)=>(a.sort_order||0)-(b.sort_order||0)));
- if(p==='/api/leads'&&req.method==='POST'){const b=await bodyJson(req);if(!b.consent)return json(res,400,{error:'É necessário consentir com o uso dos dados para retorno.'});const x={id:next(db.leads),...b,created_at:new Date().toISOString(),status:'novo'};delete x.password;db.leads.push(x);audit(null,'create','lead',x.id);save();return json(res,201,{ok:true,id:x.id})}
- if((p==='/api/auth/login'||p==='/api/admin/login')&&req.method==='POST'){if(!originOK(req))return json(res,403,{error:'Origem não autorizada'});const b=await bodyJson(req);const email=String(b.email||'').trim().toLowerCase();const key=email||req.socket.remoteAddress||'unknown';const a=attempts.get(key)||{count:0,until:0};if(a.until>Date.now())return json(res,429,{error:'Muitas tentativas. Aguarde alguns minutos.'});const user=db.users.find(x=>x.email.toLowerCase()===email&&x.active!==false);if(!user||!verifyPassword(b.password,user.passwordHash)){a.count++;if(a.count>=5){a.until=Date.now()+5*60*1000;a.count=0}attempts.set(key,a);audit(null,'login_failed','user',user?.id||null,{email});save();return json(res,401,{error:'E-mail ou senha inválidos.'})}attempts.delete(key);const sid=crypto.randomBytes(32).toString('hex');sessions.set(sid,{userId:user.id,expires:Date.now()+8*60*60*1000});audit(user,'login','user',user.id);save();res.setHeader('Set-Cookie',`atelier_v6_session=${encodeURIComponent(sid)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=28800${process.env.NODE_ENV==='production'?'; Secure':''}`);return json(res,200,{ok:true,user:{id:user.id,email:user.email,role:user.role}})}
- if(p==='/api/auth/me'&&req.method==='GET'){const user=currentUser(req);return user?json(res,200,{ok:true,user:{id:user.id,email:user.email,role:user.role}}):json(res,401,{error:'Não autenticado'})}
- if((p==='/api/auth/logout'||p==='/api/admin/logout')&&req.method==='POST'){const sid=parseCookies(req).atelier_v6_session;const user=currentUser(req);if(sid)sessions.delete(sid);res.setHeader('Set-Cookie','atelier_v6_session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0');if(user){audit(user,'logout','user',user.id);save()}return json(res,200,{ok:true})}
- if(/^\/api\/(clients|leads|appointments|products|gallery|videos|quotes|orders|measurements|payments)(?:\/\d+)?$/.test(p)){
-   if(isWrite(req)&&!originOK(req))return json(res,403,{error:'Origem não autorizada'});
-   const user=requireAuth(req,res);if(!user)return;
-   const m=p.match(/^\/api\/([^/]+)(?:\/(\d+))?$/);const alias={products:'dresses',gallery:'media'};const key=alias[m[1]]||m[1];const id=m[2]?Number(m[2]):null;
-   if(req.method==='GET'){let rows=db[key]||[];if(key==='dresses')rows=rows.map(enrichDress);return json(res,200,rows)}
-   if(req.method==='POST'){const b=await bodyJson(req);const x={id:next(db[key]),...b,created_at:new Date().toISOString()};if(key==='dresses'){x.slug=x.slug||String(x.name||'vestido').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')+'-'+x.id;x.mode=x.mode||'rental';x.status=x.status||'published'}db[key].push(x);audit(user,'create',key,x.id);save();return json(res,201,x)}
-   if(id&&(req.method==='PUT'||req.method==='PATCH')){const i=(db[key]||[]).findIndex(x=>x.id===id);if(i<0)return json(res,404,{error:'Registro não encontrado'});const b=await bodyJson(req);db[key][i]={...db[key][i],...b,id};if(key==='media'&&b.is_primary){for(const m of db.media)if(m.dress_id===db[key][i].dress_id&&m.id!==id)m.is_primary=false}audit(user,'update',key,id);save();return json(res,200,db[key][i])}
-   if(id&&req.method==='DELETE'){const i=(db[key]||[]).findIndex(x=>x.id===id);if(i<0)return json(res,404,{error:'Registro não encontrado'});db[key].splice(i,1);audit(user,'delete',key,id);save();return json(res,200,{ok:true})}
- }
- if(p.startsWith('/api/admin')||p==='/api/dashboard'||p==='/api/audit'||p==='/api/settings'){
-   if(isWrite(req)&&!originOK(req))return json(res,403,{error:'Origem não autorizada'});
-   const user=requireAuth(req,res);if(!user)return;
-   if(p==='/api/dashboard')return json(res,200,dashboard());
-   if(p==='/api/audit')return json(res,200,db.audit);
-   if((p==='/api/settings'||p==='/api/admin/settings')&&req.method==='GET')return json(res,200,db.settings);
-   if((p==='/api/settings'||p==='/api/admin/settings')&&req.method==='PUT'){const b=await bodyJson(req);db.settings={...db.settings,...b};audit(user,'update','settings',null);save();return json(res,200,db.settings)}
-   if(p==='/api/admin/me')return json(res,200,{ok:true,user:{id:user.id,email:user.email,role:user.role}});
-   if(p==='/api/admin/stats'&&req.method==='GET')return json(res,200,dashboard());
-   if(p==='/api/admin/state')return json(res,200,{dashboard:dashboard(),settings:db.settings,dresses:db.dresses,reservations:[],clients:db.clients,leads:db.leads,appointments:db.appointments,categories:db.categories,collections:db.collections});
-   if(p==='/api/admin/upload'&&req.method==='POST'){const ct=req.headers['content-type']||'';const parts=parseMultipart(await readBody(req),ct);const f=parts.find(x=>x.name==='file'&&x.filename);const dressId=Number(parts.find(x=>x.name==='dress_id')?.data.toString()||0);if(!f||!dressId)return json(res,400,{error:'Arquivo e vestido são obrigatórios'});if(f.data.length>MAX_UPLOAD)return json(res,413,{error:'Arquivo muito grande'});const ext=path.extname(safeName(f.filename)).toLowerCase();const allowed={'.jpg':'image','.jpeg':'image','.png':'image','.webp':'image','.gif':'image','.mp4':'video','.webm':'video','.mov':'video'};if(!allowed[ext])return json(res,400,{error:'Tipo de arquivo não permitido'});const name=`${Date.now()}-${crypto.randomBytes(5).toString('hex')}${ext}`;fs.writeFileSync(path.join(UPLOAD_DIR,name),f.data);const x={id:next(db.media),dress_id:dressId,url:`/uploads/media/${name}`,type:allowed[ext],alt_text:'',sort_order:0,is_primary:false,status:'published'};db.media.push(x);audit(user,'upload','media',x.id);save();return json(res,201,x)}
-   const map={dresses:'dresses',products:'dresses',media:'media',videos:'videos',categories:'categories',collections:'collections',leads:'leads',clients:'clients',appointments:'appointments',quotes:'quotes',orders:'orders',measurements:'measurements',payments:'payments'};
-   const match=p.match(/^\/api\/admin\/([^/]+)(?:\/(\d+))?$/);if(match){const key=map[match[1]];if(!key)return json(res,404,{error:'Recurso não encontrado'});const id=match[2]?Number(match[2]):null;
-     if(req.method==='GET'){let rows=db[key];if(key==='media'&&u.searchParams.get('dress_id'))rows=rows.filter(x=>x.dress_id===Number(u.searchParams.get('dress_id')));if(key==='dresses')rows=rows.map(enrichDress);return json(res,200,rows)}
-     if(req.method==='POST'){const b=await bodyJson(req);const x={id:next(db[key]),...b,created_at:new Date().toISOString()};if(key==='dresses'){x.slug=x.slug||String(x.name||'vestido').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')+'-'+x.id;x.status=x.status||'published';x.mode=x.mode||'rental';x.featured=!!x.featured}db[key].push(x);audit(user,'create',key,x.id);save();return json(res,201,x)}
-     if(id&&(req.method==='PUT'||req.method==='PATCH')){const i=db[key].findIndex(x=>x.id===id);if(i<0)return json(res,404,{error:'Registro não encontrado'});const b=await bodyJson(req);db[key][i]={...db[key][i],...b,id};if(key==='media'&&b.is_primary){for(const m of db.media)if(m.dress_id===db[key][i].dress_id&&m.id!==id)m.is_primary=false}audit(user,'update',key,id);save();return json(res,200,db[key][i])}
-     if(id&&req.method==='DELETE'){const i=db[key].findIndex(x=>x.id===id);if(i<0)return json(res,404,{error:'Registro não encontrado'});const old=db[key][i];db[key].splice(i,1);if(key==='dresses')db.media=db.media.filter(m=>m.dress_id!==id);audit(user,'delete',key,id);save();return json(res,200,{ok:true})}
-   }
- }
- const rel=p.replace(/^\//,'');const candidates=[path.join(PUBLIC_DIR,rel),path.join(PUBLIC_DIR,'assets',rel.replace(/^assets\//,''))];for(const f of candidates)if(serveFile(res,f))return;
- if(req.method==='GET' && (req.headers.accept||'').includes('text/html')) return serveFile(res,path.join(PUBLIC_DIR,'index.html'))?undefined:json(res,404,{ok:false,error:'Not found'});
- return json(res,404,{ok:false,error:'Not found'});
+ const u=url.parse(req.url,true), p=u.pathname;
+ if(p==='/health')return send(res,200,{ok:true,service:'atelier-natalia-huebra',version:'4.1.0'});
+ if(p==='/404'&&req.method==='GET')return html(res,404,notFoundHTML());
+ if(p==='/politica-de-privacidade'&&req.method==='GET')return html(res,200,privacyHTML());
+ if(p==='/obrigado'&&req.method==='GET')return html(res,200,thankYouHTML());
+ if(p==='/robots.txt'&&req.method==='GET'){res.writeHead(200,{'Content-Type':'text/plain; charset=utf-8',...securityHeaders});return res.end('User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /api/\nSitemap: /sitemap.xml\n');}
+ if(p==='/sitemap.xml'&&req.method==='GET'){const urls=['/','/politica-de-privacidade'];db.products.filter(q=>q.status!=='inativo'&&q.status!=='oculto').forEach(q=>urls.push('/vestidos/'+(q.slug||slugify(q.name))));const xml='<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'+urls.map(q=>'<url><loc>'+q+'</loc></url>').join('')+'</urlset>';res.writeHead(200,{'Content-Type':'application/xml; charset=utf-8',...securityHeaders});return res.end(xml);}
+ const productRoute=p.match(/^\/vestidos\/([a-z0-9-]+)$/);if(productRoute&&req.method==='GET'){const product=db.products.find(q=>(q.slug||slugify(q.name))===productRoute[1]&&q.status!=='inativo'&&q.status!=='oculto');if(!product)return html(res,404,notFoundHTML());return html(res,200,productDetailHTML(product));}
+
+ if(p==='/admin')return html(res,200,adminHTML);
+ if(p==='/api/settings'&&req.method==='GET')return send(res,200,db.settings);
+ if(p==='/api/public'&&req.method==='GET')return send(res,200,{settings:db.settings,products:db.products.filter(x=>x.status!=='inativo'&&x.status!=='oculto'),gallery:db.gallery.filter(x=>x.status==='publicado').sort((a,b)=>Number(a.order||0)-Number(b.order||0)),videos:db.videos.filter(x=>x.status==='publicado').sort((a,b)=>Number(a.order||0)-Number(b.order||0))});
+ if(p==='/api/leads'&&req.method==='POST'){try{const b=await readBody(req);if(!b.name||!b.phone)return send(res,400,{error:'Nome e telefone são obrigatórios'});const x=add('leads',{name:safe(b.name),phone:safe(b.phone),email:safe(b.email),interest:safe(b.interest),message:safe(b.message),source:safe(b.source||'site'),status:'novo',score:leadScore(b),next_follow_up:safe(b.next_follow_up),notes:safe(b.notes),tags:safe(b.tags)});return send(res,201,{ok:true,id:x.id,score:x.score})}catch(e){return send(res,400,{error:e.message})}}
+ if(p==='/api/auth/login'&&req.method==='POST'){const now=Date.now(),ip=req.socket.remoteAddress||'unknown',a=attempts.get(ip)||{n:0,t:now};if(now-a.t>15*60e3){a.n=0;a.t=now}if(a.n>=10)return send(res,429,{error:'Muitas tentativas. Tente novamente em alguns minutos.'});try{const b=await readBody(req),u=db.users.find(x=>x.email.toLowerCase()===String(b.email||'').toLowerCase());if(!u||!verifyPassword(String(b.password||''),u.password_hash)){a.n++;attempts.set(ip,a);return send(res,401,{error:'E-mail ou senha inválidos'})}a.n=0;attempts.set(ip,a);const token=crypto.randomBytes(32).toString('hex');sessions.set(token,{user:{id:u.id,email:u.email,role:u.role},expires:Date.now()+8*3600e3});return send(res,200,{ok:true,user:{email:u.email,role:u.role}},{'Set-Cookie':`atelier_session=${encodeURIComponent(token)}; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800${process.env.NODE_ENV==='production'?'; Secure':''}`})}catch(e){return send(res,400,{error:e.message})}}
+ if(p==='/api/auth/logout'&&req.method==='POST'){const t=parseCookies(req).atelier_session;if(t)sessions.delete(t);return send(res,200,{ok:true},{'Set-Cookie':'atelier_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0'})}
+ if(p==='/api/auth/me'&&req.method==='GET'){const s=requireAuth(req,res);if(!s)return;return send(res,200,{user:s.user})}
+ if(p.startsWith('/api/')&&!sameOrigin(req))return send(res,403,{error:'Origem não autorizada'});
+ const s=(p.startsWith('/api/')?requireAuth(req,res):null);if(p.startsWith('/api/')&&!s)return;
+ if(p==='/api/dashboard'){const today=new Date().toISOString().slice(0,10);return send(res,200,{clients:db.clients.length,leads:db.leads.length,appointments:db.appointments.filter(x=>x.starts_at&&x.starts_at.slice(0,10)===today).length,products:db.products.length,orders:db.orders.length,gallery:db.gallery.length,videos:db.videos.length,pending:db.payments.filter(x=>x.status==='pendente').reduce((a,x)=>a+Number(x.amount||0),0)})}
+ if(p==='/api/audit')return send(res,200,db.audit_logs.slice(-300).reverse().map(a=>({...a,email:db.users.find(u=>u.id===a.user_id)?.email||null})));
+ if(p==='/api/settings'&&req.method==='PUT'){const b=await readBody(req);for(const k of Object.keys(defaults))if(k in b)db.settings[k]=safe(b[k]);save();log(req,'update','settings');return send(res,200,{ok:true})}
+ const m=p.match(/^\/api\/(clients|leads|appointments|products|quotes|orders|measurements|payments)(?:\/(\d+))?$/);if(m){const k=m[1],id=m[2],fspec=fields[k];if(req.method==='GET')return send(res,200,db[k].slice(-500).reverse());if(req.method==='POST'){const b=await readBody(req),o={};for(const f of fspec)o[f]=safe(b[f]);if(k==='clients'&&!o.name)return send(res,400,{error:'Nome obrigatório'});if(k==='leads'){o.score=leadScore(o);if(!o.status)o.status='novo'}const x=add(k,o);log(req,'create',k,x.id);return send(res,201,{id:x.id})}if(id&&req.method==='PUT'){const o=find(k,id);if(!o)return send(res,404,{error:'Registro não encontrado'});const b=await readBody(req);for(const f of fspec)if(f in b)o[f]=safe(b[f]);if(k==='leads')o.score=leadScore(o);o.updated_at=new Date().toISOString();save();log(req,'update',k,Number(id));return send(res,200,{ok:true})}if(id&&req.method==='DELETE'){const idx=db[k].findIndex(x=>x.id===Number(id));if(idx<0)return send(res,404,{error:'Registro não encontrado'});db[k].splice(idx,1);save();log(req,'delete',k,Number(id));return send(res,200,{ok:true})}}
+ if(staticFile(req,res,p==='/'?'/index.html':p.slice(1)))return;
+ return html(res,404,notFoundHTML());
 }
-http.createServer((req,res)=>{res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('X-Frame-Options','SAMEORIGIN');res.setHeader('Referrer-Policy','strict-origin-when-cross-origin');res.setHeader('Permissions-Policy','camera=(),microphone=(),geolocation=()');res.setHeader('Content-Security-Policy',"default-src 'self'; img-src 'self' data: https:; media-src 'self' https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; script-src 'self' 'unsafe-inline'; frame-src https://www.youtube-nocookie.com https://player.vimeo.com");route(req,res).catch(e=>{console.error(e);json(res,500,{ok:false,error:'Erro interno do servidor'})})}).listen(PORT,()=>console.log(`Atelier V6 listening on ${PORT}`));
+const server=http.createServer((req,res)=>{route(req,res).catch(e=>{console.error(e);send(res,500,{error:'Erro interno'})})});
+server.listen(PORT,()=>console.log(`Ateliê Natália Huebra v4.1.0 — http://localhost:${PORT}`));

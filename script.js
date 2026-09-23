@@ -41,12 +41,13 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!grid || !Array.isArray(products) || !products.length) return;
     grid.innerHTML = products.map((p) => `
       <article class="catalog-card">
-        <img src="${escapeHtml(p.image || "assets/catalogo-vestido-1.webp")}" alt="${escapeHtml(p.name || "Vestido do Ateliê")}" loading="lazy">
+        <a class="catalog-image-link" href="/vestidos/${encodeURIComponent(p.slug || String(p.name||"vestido").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,""))}"><img src="${escapeHtml(p.image || "assets/catalogo-vestido-1.jpg")}" alt="${escapeHtml(p.name || "Vestido do Ateliê")}" loading="lazy"></a>
         <div class="catalog-card-content">
           <p class="card-kicker">${escapeHtml(p.category || "COLEÇÃO")}</p>
           <h3>${escapeHtml(p.name || "Criação Natália Huebra")}</h3>
           <p>${escapeHtml(p.description || "Criação sob medida para o seu momento.")}</p>
           <div class="catalog-price">${escapeHtml(p.price || "Consulte disponibilidade e valores")}</div>
+          <a class="detail-link" href="/vestidos/${encodeURIComponent(p.slug || String(p.name||"vestido").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,""))}">Ver detalhes →</a>
           <button class="catalog-buy-btn" type="button" data-nome="${escapeHtml(p.name || "vestido do catálogo")}">Tenho interesse</button>
         </div>
       </article>`).join("");
@@ -275,7 +276,8 @@ document.addEventListener("DOMContentLoaded", () => {
   ========================================================= */
 
   let galleryItems = [
-    ...document.querySelectorAll(".gallery-item")
+    ...document.querySelectorAll(".gallery-item"),
+    ...document.querySelectorAll(".showcase-image")
   ];
 
   const lightbox = document.getElementById("lightbox");
@@ -542,14 +544,33 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       // Persiste o lead no painel antes de abrir o WhatsApp.
+      const formStatus = document.getElementById("formStatus");
+
       try {
-        await fetch("/api/leads", {
+        const response = await fetch("/api/leads", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ name, phone, email, interest, message })
         });
+
+        if (!response.ok) {
+          throw new Error("Não foi possível registrar o atendimento.");
+        }
+
+        if (formStatus) {
+          formStatus.textContent = "Recebemos seus dados. Redirecionando para a confirmação…";
+          formStatus.classList.remove("is-error");
+          formStatus.classList.add("is-success");
+        }
       } catch (error) {
         console.warn("Não foi possível registrar o lead no painel:", error);
+
+        if (formStatus) {
+          formStatus.textContent = "Não foi possível registrar o formulário agora. Tente novamente ou fale conosco pelo WhatsApp.";
+          formStatus.classList.remove("is-success");
+          formStatus.classList.add("is-error");
+        }
+        return;
       }
 
       const whatsappMessage = [
@@ -565,6 +586,9 @@ document.addEventListener("DOMContentLoaded", () => {
         .join("\n");
 
       openWhatsApp(whatsappMessage);
+      window.setTimeout(() => {
+        window.location.href = "/obrigado";
+      }, 150);
     });
   }
 

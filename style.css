@@ -1132,3 +1132,30 @@ button {
     width: 100%;
   }
 }
+
+
+/* V4.0 — HOME SHOWCASE / INTERAÇÕES */
+.home-showcase{background:#f7f2ea}.showcase-layout{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(320px,.85fr);gap:22px;align-items:stretch}.showcase-photos{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}.showcase-image{position:relative;min-height:290px;padding:0;border:0;overflow:hidden;background:#0b0a08;text-align:left;cursor:pointer}.showcase-image img{width:100%;height:100%;min-height:290px;object-fit:cover;transition:transform .55s ease,filter .35s ease}.showcase-image:after{content:"";position:absolute;inset:auto 0 0;height:38%;background:linear-gradient(transparent,rgba(11,10,8,.72));pointer-events:none}.showcase-image:hover img,.showcase-image:focus-visible img{transform:scale(1.055)}.showcase-label{position:absolute;z-index:1;left:18px;bottom:14px;color:#fff;font-family:var(--serif);font-size:25px}.showcase-videos{display:grid;grid-template-rows:repeat(3,minmax(0,1fr));gap:14px}.showcase-videos .video-item{min-height:0}.showcase-videos .video-item video{min-height:0;height:100%}.showcase-actions{margin-top:28px;display:flex;justify-content:center;gap:12px;flex-wrap:wrap}.btn-outline-dark{border-color:#0b0a08;color:#0b0a08}.btn-outline-dark:hover,.btn-outline-dark:focus-visible{background:#0b0a08;color:#fff}.catalog-image-link{display:block;overflow:hidden;background:#0b0a08}.catalog-image-link img{width:100%;transition:transform .45s ease}.catalog-image-link:hover img,.catalog-image-link:focus-visible img{transform:scale(1.045)}.catalog-card-content .detail-link{display:inline-block;margin-top:8px;color:var(--gold);font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase}.product-detail-page{min-height:100vh;background:var(--cream)}.product-detail-hero{padding:145px 0 80px}.product-detail-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(320px,.8fr);gap:55px;align-items:start}.product-detail-image{width:100%;max-height:78vh;object-fit:contain;background:#eee7dc}.product-detail-copy{position:sticky;top:110px}.product-detail-copy h1{margin:0 0 15px;font-family:var(--serif);font-size:clamp(46px,6vw,78px);font-weight:500;line-height:.95}.product-detail-copy .kicker{color:var(--gold);font-size:11px;font-weight:700;letter-spacing:.16em;text-transform:uppercase}.product-detail-copy .price{margin:24px 0;color:var(--brown);font-size:18px}.detail-back{display:inline-block;margin-bottom:28px;color:var(--muted);font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase}.detail-meta{margin:28px 0;border-top:1px solid var(--border)}.detail-meta div{display:grid;grid-template-columns:130px 1fr;gap:15px;padding:12px 0;border-bottom:1px solid var(--border)}.detail-meta strong{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.08em}.lightbox[aria-hidden="true"],.video-modal[aria-hidden="true"]{visibility:hidden;opacity:0;pointer-events:none}@media(max-width:850px){.showcase-layout,.product-detail-grid{grid-template-columns:1fr}.showcase-videos{grid-template-rows:none;grid-template-columns:1fr}.product-detail-copy{position:static}}@media(max-width:620px){.showcase-photos{gap:8px}.showcase-image,.showcase-image img{min-height:190px}.showcase-label{left:12px;bottom:9px;font-size:20px}.showcase-actions{flex-direction:column}.showcase-actions .btn{width:100%}.product-detail-hero{padding-top:110px}.product-detail-copy h1{font-size:48px}}
+
+
+/* CHECKLIST V4.1 — conversão, acessibilidade e páginas institucionais */
+.form-status{min-height:1.4em;margin:8px 0 0;font-size:13px;line-height:1.5}
+.form-status.is-success{color:#2f6f44}
+.form-status.is-error{color:#9b2c2c}
+.mobile-fixed-cta{display:none}
+.footer-privacy{padding:12px 0 0;text-align:center}
+.footer-privacy a{font-size:12px;color:rgba(243,238,229,.7);text-decoration:underline;text-underline-offset:3px}
+.simple-page{background:#f7f2ea;color:#211a15}
+.simple-page-main{min-height:70vh;padding:150px 0 80px}
+.simple-page-main h1{font-family:var(--serif);font-size:clamp(48px,7vw,84px);line-height:.95;margin:10px 0 28px}
+.simple-page-main p,.legal-content p{max-width:760px;font-size:16px;line-height:1.8}
+.legal-content h2{margin:34px 0 8px;font-family:var(--serif);font-size:30px}
+.simple-page-main a{color:inherit}
+.simple-page-footer{padding:28px;text-align:center;border-top:1px solid rgba(11,10,8,.1)}
+.simple-page-footer a{text-decoration:underline;text-underline-offset:3px}
+@media (max-width:720px){
+  .mobile-fixed-cta{position:fixed;display:flex;left:12px;right:12px;bottom:12px;z-index:880;min-height:52px;align-items:center;justify-content:center;padding:12px 18px;border-radius:999px;background:var(--gold);color:#0b0a08;font-weight:700;letter-spacing:.08em;font-size:12px;box-shadow:0 10px 30px rgba(0,0,0,.22)}
+  .whatsapp-float{bottom:76px;right:18px;width:48px;height:48px;font-size:20px}
+  .simple-page-main{padding:120px 0 60px}
+  .simple-page-main h1{font-size:clamp(44px,13vw,64px)}
+}
